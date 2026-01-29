@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 import math
-from fpdf import FPDF
+from fpdf import FPDF # fpdf2 usa o mesmo comando de import
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Precificador Pro", layout="wide")
 
-# --- CSS PERSONALIZADO (Fiel ao seu código) ---
+# --- CSS PERSONALIZADO (Exatamente como o seu código) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
@@ -44,52 +44,46 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÃO PARA GERAR PDF BONITO ---
+# --- FUNÇÃO PARA GERAR PDF (Design Profissional) ---
 def criar_pdf(df):
     pdf = FPDF()
     pdf.add_page()
     
-    # Cabeçalho Estilizado
-    pdf.set_fill_color(102, 126, 234) # Cor do seu gradiente (Roxo/Azul)
+    # Header Roxo
+    pdf.set_fill_color(102, 126, 234)
     pdf.rect(0, 0, 210, 40, 'F')
     
     pdf.set_font("Arial", 'B', 20)
     pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 20, "RELATÓRIO DE PRECIFICAÇÃO", ln=True, align='C')
-    pdf.set_font("Arial", size=10)
-    pdf.cell(0, 5, "Análise Comparativa de Marketplaces", ln=True, align='C')
+    pdf.cell(0, 20, "RELATORIO DE PRECIFICACAO", ln=True, align='C')
     
-    pdf.ln(20)
+    pdf.ln(25)
     
-    # Tabela
+    # Tabela com Cores
     pdf.set_text_color(15, 23, 42)
     pdf.set_font("Arial", 'B', 10)
     
-    # Header da Tabela
-    pdf.set_fill_color(240, 240, 240)
+    # Header Tabela
+    pdf.set_fill_color(230, 230, 230)
     pdf.cell(50, 10, "Produto", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Preço ML", 1, 0, 'C', True)
+    pdf.cell(35, 10, "Preco ML", 1, 0, 'C', True)
     pdf.cell(35, 10, "Lucro ML", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Preço SHP", 1, 0, 'C', True)
+    pdf.cell(35, 10, "Preco SHP", 1, 0, 'C', True)
     pdf.cell(35, 10, "Lucro SHP", 1, 1, 'C', True)
     
-    # Linhas da Tabela
+    # Conteúdo Tabela
     pdf.set_font("Arial", size=9)
     for i, row in df.iterrows():
         fill = i % 2 == 0
         pdf.cell(50, 10, str(row['Produto']), 1, 0, 'L', fill)
         pdf.cell(35, 10, f"R$ {row['Preço ML']:.2f}", 1, 0, 'C', fill)
-        pdf.set_text_color(16, 185, 129) # Cor de sucesso
         pdf.cell(35, 10, f"R$ {row['Lucro ML']:.2f}", 1, 0, 'C', fill)
-        pdf.set_text_color(15, 23, 42)
         pdf.cell(35, 10, f"R$ {row['Preço Shopee']:.2f}", 1, 0, 'C', fill)
-        pdf.set_text_color(16, 185, 129)
         pdf.cell(35, 10, f"R$ {row['Lucro Shopee']:.2f}", 1, 1, 'C', fill)
-        pdf.set_text_color(15, 23, 42)
 
-    return pdf.output(dest='S')
+    return pdf.output()
 
-# --- LÓGICA DE NEGÓCIO (Categorias e Cálculos - Mantidos) ---
+# --- REGRAS E CALCULOS (Fiel ao seu código) ---
 CATEGORIAS = {
     "Eletrônicos": {"ml": 0.14, "shopee": 0.14},
     "Moda e Acessórios": {"ml": 0.12, "shopee": 0.13},
@@ -153,8 +147,7 @@ with st.container():
 
 if st.session_state.db:
     df = pd.DataFrame(st.session_state.db)
-    
-    st.markdown("<h3 class='white-text'>📋 Selecione um produto abaixo para comparar:</h3>", unsafe_allow_html=True)
+    st.markdown("<h3 class='white-text'>📋 Selecione um produto abaixo:</h3>", unsafe_allow_html=True)
     event = st.dataframe(df[["Produto", "Custo", "Preço ML", "Lucro ML", "Preço Shopee", "Lucro Shopee"]], use_container_width=True, on_select="rerun", selection_mode="single-row")
 
     selecionado = event.selection.rows[0] if event.selection.rows else len(st.session_state.db) - 1
@@ -178,7 +171,6 @@ if st.session_state.db:
         
         st.divider()
         
-        # BOTÃO PDF
         pdf_data = criar_pdf(df)
         st.download_button(
             label="📄 BAIXAR RELATÓRIO EM PDF",
