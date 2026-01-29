@@ -2,138 +2,177 @@ import streamlit as st
 import pandas as pd
 import math
 
-# --- CONFIGURAÇÃO DA PÁGINA ---
-st.set_page_config(page_title="Precificador Pro", layout="wide", initial_sidebar_state="expanded")
+# --- CONFIGURAÇÃO DA PÁGINA E CSS CUSTOMIZADO ---
+st.set_page_config(page_title="Precificador Pro", layout="wide")
 
-# Estilização para aproximar do seu HTML
+# Injetando o CSS do seu HTML para transformar o visual do Streamlit
 st.markdown("""
     <style>
-    .main { background-color: #f8fafc; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    .status-winner { color: #10b981; font-weight: bold; border: 1px solid #10b981; padding: 2px 8px; border-radius: 20px; font-size: 0.8em; }
+    /* Fundo Gradiente igual ao seu HTML */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #0F172A;
+    }
+    
+    /* Estilização dos Cards de Entrada e Grid */
+    div[data-testid="stExpander"], .stDataFrame, div[data-testid="stMetricValue"] {
+        background-color: white !important;
+        border-radius: 20px !important;
+        padding: 10px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+    }
+
+    /* Títulos em Branco para contrastar com o fundo */
+    h1, h2, h3, p {
+        color: white !important;
+    }
+
+    /* Botão Primário Estilizado */
+    .stButton>button {
+        width: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        border-radius: 12px !important;
+        border: none !important;
+        font-weight: 600 !important;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
+    }
+
+    /* Badges de Plataforma */
+    .badge-ml {
+        background-color: #FFE600;
+        color: #0F172A;
+        padding: 5px 15px;
+        border-radius: 50px;
+        font-weight: bold;
+        display: inline-block;
+    }
+    .badge-shopee {
+        background-color: #EE4D2D;
+        color: white;
+        padding: 5px 15px;
+        border-radius: 50px;
+        font-weight: bold;
+        display: inline-block;
+    }
     </style>
     """, unsafe_allow_html=True)
 
-# --- REGRAS DE NEGÓCIO (Baseadas no seu HTML) ---
+# --- REGRAS DE NEGÓCIO E TAXAS ---
 CATEGORIAS = {
     "Eletrônicos": {"ml": 0.12, "shopee": 0.14},
     "Moda e Acessórios": {"ml": 0.12, "shopee": 0.13},
     "Casa e Decoração": {"ml": 0.11, "shopee": 0.12},
     "Esportes": {"ml": 0.12, "shopee": 0.13},
-    "Outros": {"ml": 0.13, "shopee": 0.14}
+    "Outros": {"ml": 0.12, "shopee": 0.14}
 }
 
 def format_brl(val):
     return f"R$ {val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def arredondar_psicologico(preco):
-    """Arredonda para terminar em .90 conforme seu HTML"""
     if preco <= 0: return 0.0
     return math.ceil(preco) - 0.10
 
-def calcular_venda_completo(custo, markup_alvo, imposto_perc, comissao_perc, taxa_fixa, frete):
-    # Fórmula: Preço = (Custo + Taxa Fixa + Frete) / (1 - Imposto - Comissão - Margem)
-    denominador = 1 - (imposto_perc / 100) - comissao_perc - (markup_alvo / 100)
+def calcular_venda(custo, markup, imposto, comissao, taxa_fixa, frete):
+    # Baseado na lógica do seu script HTML
+    denominador = 1 - (imposto / 100) - comissao - (markup / 100)
+    if denominador <= 0: return 0.0, 0.0, 0.0
     
-    if denominador <= 0:
-        return 0.0, 0.0, 0.0
+    preco_base = (custo + taxa_fixa + frete) / denominador
+    preco_final = arredondar_psicologico(preco_base)
     
-    preco_bruto = (custo + taxa_fixa + frete) / denominador
-    preco_final = arredondar_psicologico(preco_bruto)
-    
-    # Recalcula valores reais baseados no preço final arredondado
-    valor_comissao = (preco_final * comissao_perc) + taxa_fixa
-    valor_imposto = preco_final * (imposto_perc / 100)
-    lucro_real = preco_final - custo - valor_comissao - valor_imposto - frete
-    margem_real = (lucro_real / preco_final) * 100 if preco_final > 0 else 0
-    
-    return preco_final, lucro_real, margem_real
+    lucro = preco_final - custo - (preco_final * (imposto/100)) - (preco_final * comissao) - taxa_fixa - frete
+    margem = (lucro / preco_final) * 100 if preco_final > 0 else 0
+    return preco_final, lucro, margem
 
 # --- INTERFACE ---
 if 'db' not in st.session_state:
     st.session_state.db = []
 
-st.title("💰 Precificador Pro: ML & Shopee")
+st.markdown("<h1 style='text-align: center;'>💰 Calculadora de Precificação</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center;'>Calcule o preço ideal para vender no Mercado Livre e Shopee</p>", unsafe_allow_html=True)
 
-with st.sidebar:
-    st.header("⚙️ Configurações Globais")
-    regime = st.selectbox("Regime Tributário", ["Simples Nacional", "Lucro Presumido", "MEI"])
-    imposto_padrao = 6.0 if regime == "Simples Nacional" else (0.0 if regime == "MEI" else 13.33)
-    taxa_imposto = st.number_input("Alíquota de Imposto (%)", value=imposto_padrao)
-    
-    st.divider()
-    st.markdown("### 📊 Taxas Atuais")
-    df_taxas = pd.DataFrame([{"Cat": k, "ML": f"{v['ml']:.1%}", "SHP": f"{v['shopee']:.1%}"} for k, v in CATEGORIAS.items()])
-    st.table(df_taxas)
+# Container de Entrada (Simulando o Card Branco do seu HTML)
+with st.container():
+    st.markdown("<h3 style='color: #0F172A !important;'>📦 Dados do Produto</h3>", unsafe_allow_html=True)
+    with st.expander("Clique para expandir o formulário", expanded=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            nome = st.text_input("Nome do Produto", placeholder="Ex: Smartwatch")
+            custo = st.number_input("Custo de Aquisição (R$)", min_value=0.0, value=50.0)
+            categoria = st.selectbox("Categoria", list(CATEGORIAS.keys()))
+        with col2:
+            markup = st.slider("Margem Desejada (%)", 5, 50, 30)
+            imposto = st.number_input("Imposto Simples Nacional (%)", value=6.0)
+            frete = st.number_input("Custo de Frete (Se grátis)", value=0.0)
 
-# Formulário inspirado no seu card de entrada
-with st.expander("➕ Adicionar Novo Produto para Cálculo", expanded=True):
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        nome = st.text_input("Nome do Produto", placeholder="Ex: Smartwatch v8")
-        cat_sel = st.selectbox("Categoria", list(CATEGORIAS.keys()))
-        custo_in = st.number_input("Custo de Aquisição (R$)", min_value=0.0, value=50.0)
-    with c2:
-        margem_in = st.slider("Margem de Lucro Desejada (%)", 5, 50, 25)
-        frete_in = st.number_input("Custo do Frete (Se grátis)", value=0.0)
-    with c3:
-        st.write("**Canais de Venda**")
-        tipo_ml = st.radio("ML: Tipo de Anúncio", ["Clássico", "Premium"])
-        shopee_fg = st.checkbox("Shopee: Programa Frete Grátis?")
+        tipo_ml = st.radio("ML: Tipo de Anúncio", ["Clássico", "Premium"], horizontal=True)
+        shopee_fg = st.checkbox("Shopee: Programa Frete Grátis (Taxa 20%)")
 
-    if st.button("🚀 Calcular e Comparar", use_container_width=True):
-        # Lógica ML
-        comissao_ml = CATEGORIAS[cat_sel]["ml"] + (0.05 if tipo_ml == "Premium" else 0.0)
-        taxa_fixa_ml = 6.75 if custo_in < 79 else 0 # Regra ML
-        p_ml, l_ml, m_ml = calcular_venda_completo(custo_in, margem_in, taxa_imposto, comissao_ml, taxa_fixa_ml, frete_in)
-        
-        # Lógica Shopee
-        comissao_sh = 0.20 if shopee_fg else 0.14
-        p_sh, l_sh, m_sh = calcular_venda_completo(custo_in, margem_in, taxa_imposto, comissao_sh, 4.0, frete_in)
-        
-        st.session_state.db.append({
-            "Produto": nome,
-            "Custo": custo_in,
-            "Preço ML": p_ml,
-            "Lucro ML": l_ml,
-            "Margem ML": f"{m_ml:.1f}%",
-            "Preço Shopee": p_sh,
-            "Lucro Shopee": l_sh,
-            "Margem Shopee": f"{m_sh:.1f}%",
-            "Vantagem": "Mercado Livre" if l_ml > l_sh else "Shopee"
-        })
+        if st.button("CALCULAR PREÇO"):
+            # Lógica ML
+            taxa_ml = CATEGORIAS[categoria]["ml"] + (0.05 if tipo_ml == "Premium" else 0.0)
+            fixa_ml = 6.75 if custo < 79 else 0
+            p_ml, l_ml, m_ml = calcular_venda(custo, markup, imposto, taxa_ml, fixa_ml, frete)
 
-# --- DASHBOARD DE RESULTADOS ---
-if st.session_state.db:
-    # Mostra o último cálculo em destaque (Igual aos seus cards do HTML)
-    ultimo = st.session_state.db[-1]
-    st.subheader(f"📊 Última Análise: {ultimo['Produto']}")
-    
-    res1, res2 = st.columns(2)
-    with res1:
-        st.info(f"**MERCADO LIVRE**\n\nPreço Sugerido: **{format_brl(ultimo['Preço ML'])}**\n\nLucro: {format_brl(ultimo['Lucro ML'])} ({ultimo['Margem ML']})")
-    with res2:
-        st.warning(f"**SHOPEE**\n\nPreço Sugerido: **{format_brl(ultimo['Preço Shopee'])}**\n\nLucro: {format_brl(ultimo['Lucro Shopee'])} ({ultimo['Margem Shopee']})")
+            # Lógica Shopee
+            taxa_sh = 0.20 if shopee_fg else 0.14
+            p_sh, l_sh, m_sh = calcular_venda(custo, markup, imposto, taxa_sh, 4.0, frete)
 
-    st.divider()
-    
-    # GRID HISTÓRICO
-    st.subheader("📋 Histórico de Precificação")
-    df_final = pd.DataFrame(st.session_state.db)
-    
-    # Aplicando formatação para o Grid
-    df_grid = df_final.copy()
-    for col in ["Custo", "Preço ML", "Lucro ML", "Preço Shopee", "Lucro Shopee"]:
-        df_grid[col] = df_grid[col].apply(format_brl)
-    
-    st.dataframe(df_grid, use_container_width=True)
-
-    # BOTÕES DE AÇÃO
-    col_a, col_b = st.columns(2)
-    with col_a:
-        csv = df_final.to_csv(index=False).encode('utf-8-sig')
-        st.download_button("📥 Baixar Relatório Completo", data=csv, file_name="precificacao.csv", mime="text/csv")
-    with col_b:
-        if st.button("🗑️ Limpar Tudo", type="secondary"):
-            st.session_state.db = []
+            st.session_state.db.append({
+                "Produto": nome, "Custo": custo,
+                "Preço ML": p_ml, "Lucro ML": l_ml, "Margem ML": f"{m_ml:.1f}%",
+                "Preço Shopee": p_sh, "Lucro Shopee": l_sh, "Margem Shopee": f"{m_sh:.1f}%"
+            })
             st.rerun()
+
+# --- RESULTADOS ESTILIZADOS ---
+if st.session_state.db:
+    st.markdown("### 📊 Comparativo de Resultados")
+    item = st.session_state.db[-1] # Pega o último calculado
+    
+    res_ml, res_sh = st.columns(2)
+    
+    with res_ml:
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 20px; border-top: 6px solid #FFE600;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #0F172A; font-weight: bold; font-size: 1.2em;">Mercado Livre</span>
+                    <span class="badge-ml">ML</span>
+                </div>
+                <hr>
+                <p style="color: #64748B !important; margin:0;">Preço Recomendado:</p>
+                <h2 style="color: #0F172A !important; margin:0;">{format_brl(item['Preço ML'])}</h2>
+                <p style="color: {'#10B981' if item['Lucro ML'] > 0 else '#EF4444'} !important; font-weight: bold;">
+                    Lucro: {format_brl(item['Lucro ML'])} ({item['Margem ML']})
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    with res_sh:
+        st.markdown(f"""
+            <div style="background: white; padding: 20px; border-radius: 20px; border-top: 6px solid #EE4D2D;">
+                <div style="display: flex; justify-content: space-between;">
+                    <span style="color: #0F172A; font-weight: bold; font-size: 1.2em;">Shopee</span>
+                    <span class="badge-shopee">SHOPEE</span>
+                </div>
+                <hr>
+                <p style="color: #64748B !important; margin:0;">Preço Recomendado:</p>
+                <h2 style="color: #0F172A !important; margin:0;">{format_brl(item['Preço Shopee'])}</h2>
+                <p style="color: {'#10B981' if item['Lucro Shopee'] > 0 else '#EF4444'} !important; font-weight: bold;">
+                    Lucro: {format_brl(item['Lucro Shopee'])} ({item['Margem Shopee']})
+                </p>
+            </div>
+        """, unsafe_allow_html=True)
+
+    # Grid Histórico
+    st.markdown("<br><h3 style='color: white !important;'>📋 Histórico Completo</h3>", unsafe_allow_html=True)
+    df = pd.DataFrame(st.session_state.db)
+    st.dataframe(df, use_container_width=True)
+
+    if st.button("🗑️ LIMPAR HISTÓRICO"):
+        st.session_state.db = []
+        st.rerun()
