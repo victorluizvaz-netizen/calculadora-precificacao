@@ -1,87 +1,91 @@
 import streamlit as st
 import pandas as pd
 import math
-from fpdf import FPDF # fpdf2 usa o mesmo comando de import
+from fpdf import FPDF
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Precificador Pro", layout="wide")
 
-# --- CSS PERSONALIZADO (Exatamente como o seu código) ---
+# --- CSS (Fiel ao seu código original) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-    
-    .stApp {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        font-family: 'Outfit', sans-serif !important;
-    }
-
-    .main-container {
-        background-color: white;
-        border-radius: 20px;
-        padding: 25px;
-        margin-bottom: 25px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-    }
-
+    .stApp { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; font-family: 'Outfit', sans-serif !important; }
+    .main-container { background-color: white; border-radius: 20px; padding: 25px; margin-bottom: 25px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
     label p, .stMarkdown p { color: #0F172A !important; font-weight: 600 !important; }
     .white-text { color: white !important; text-align: center; }
-
-    .comp-card {
-        background: #F8FAFC;
-        border-radius: 16px;
-        padding: 15px;
-        text-align: center;
-        border: 1px solid #E2E8F0;
-        height: 100%;
-    }
+    .comp-card { background: #F8FAFC; border-radius: 16px; padding: 15px; text-align: center; border: 1px solid #E2E8F0; height: 100%; }
     .metric-label { color: #64748B; font-size: 0.75rem; text-transform: uppercase; font-weight: 700; }
     .metric-value { color: #0F172A; font-size: 1.4rem; font-weight: 700; margin: 8px 0; }
-    .winner-badge { 
-        background: #10B981; color: white; padding: 4px 10px; border-radius: 50px; font-size: 0.65rem; font-weight: bold;
-        display: inline-block;
-    }
+    .winner-badge { background: #10B981; color: white; padding: 4px 10px; border-radius: 50px; font-size: 0.65rem; font-weight: bold; display: inline-block; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- FUNÇÃO PARA GERAR PDF (Design Profissional) ---
-def criar_pdf(df):
+# --- FUNÇÃO PARA GERAR PDF (Design Superior) ---
+def criar_pdf_premium(df):
     pdf = FPDF()
     pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Header Roxo
-    pdf.set_fill_color(102, 126, 234)
-    pdf.rect(0, 0, 210, 40, 'F')
+    # Cabeçalho com Estilo
+    pdf.set_fill_color(102, 126, 234)  # Roxo #667eea
+    pdf.rect(0, 0, 210, 45, 'F')
     
-    pdf.set_font("Arial", 'B', 20)
     pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", 'B', 22)
     pdf.cell(0, 20, "RELATORIO DE PRECIFICACAO", ln=True, align='C')
+    pdf.set_font("Arial", '', 11)
+    pdf.cell(0, 5, "Analise Comparativa de Marketplace - Pro Version", ln=True, align='C')
     
-    pdf.ln(25)
+    pdf.ln(30)
     
-    # Tabela com Cores
-    pdf.set_text_color(15, 23, 42)
+    # Tabela de Dados
+    pdf.set_text_color(30, 41, 59)
     pdf.set_font("Arial", 'B', 10)
     
-    # Header Tabela
-    pdf.set_fill_color(230, 230, 230)
-    pdf.cell(50, 10, "Produto", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Preco ML", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Lucro ML", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Preco SHP", 1, 0, 'C', True)
-    pdf.cell(35, 10, "Lucro SHP", 1, 1, 'C', True)
+    # Header da Tabela
+    pdf.set_fill_color(241, 245, 249)
+    pdf.cell(60, 12, " Produto", 1, 0, 'L', True)
+    pdf.cell(32, 12, " Preco ML", 1, 0, 'C', True)
+    pdf.cell(32, 12, " Lucro ML", 1, 0, 'C', True)
+    pdf.cell(32, 12, " Preco SHP", 1, 0, 'C', True)
+    pdf.cell(32, 12, " Lucro SHP", 1, 1, 'C', True)
     
-    # Conteúdo Tabela
-    pdf.set_font("Arial", size=9)
+    # Linhas
+    pdf.set_font("Arial", '', 9)
     for i, row in df.iterrows():
         fill = i % 2 == 0
-        pdf.cell(50, 10, str(row['Produto']), 1, 0, 'L', fill)
-        pdf.cell(35, 10, f"R$ {row['Preço ML']:.2f}", 1, 0, 'C', fill)
-        pdf.cell(35, 10, f"R$ {row['Lucro ML']:.2f}", 1, 0, 'C', fill)
-        pdf.cell(35, 10, f"R$ {row['Preço Shopee']:.2f}", 1, 0, 'C', fill)
-        pdf.cell(35, 10, f"R$ {row['Lucro Shopee']:.2f}", 1, 1, 'C', fill)
+        pdf.set_fill_color(255, 255, 255) if not fill else pdf.set_fill_color(248, 250, 252)
+        
+        pdf.cell(60, 10, f" {row['Produto']}", 1, 0, 'L', True)
+        pdf.cell(32, 10, f" R$ {row['Preço ML']:.2f}", 1, 0, 'C', True)
+        
+        # Lucro ML (Verde se maior)
+        if row['Lucro ML'] >= row['Lucro Shopee']:
+            pdf.set_text_color(16, 185, 129)
+            pdf.set_font("Arial", 'B', 9)
+        pdf.cell(32, 10, f" R$ {row['Lucro ML']:.2f}", 1, 0, 'C', True)
+        pdf.set_text_color(30, 41, 59)
+        pdf.set_font("Arial", '', 9)
+        
+        pdf.cell(32, 10, f" R$ {row['Preço Shopee']:.2f}", 1, 0, 'C', True)
+        
+        # Lucro SHP (Verde se maior)
+        if row['Lucro Shopee'] > row['Lucro ML']:
+            pdf.set_text_color(16, 185, 129)
+            pdf.set_font("Arial", 'B', 9)
+        pdf.cell(32, 10, f" R$ {row['Lucro Shopee']:.2f}", 1, 1, 'C', True)
+        pdf.set_text_color(30, 41, 59)
+        pdf.set_font("Arial", '', 9)
 
-    return pdf.output()
+    # Nota de rodapé estilizada
+    pdf.ln(10)
+    pdf.set_font("Arial", 'I', 8)
+    pdf.set_text_color(100, 116, 139)
+    pdf.cell(0, 10, "Este relatorio e um informativo gerado pelo Precificador Pro. Valores podem variar conforme impostos.", align='C')
+
+    # CORREÇÃO DO ERRO: Retornar bytes diretamente
+    return bytes(pdf.output())
 
 # --- REGRAS E CALCULOS (Fiel ao seu código) ---
 CATEGORIAS = {
@@ -171,10 +175,11 @@ if st.session_state.db:
         
         st.divider()
         
-        pdf_data = criar_pdf(df)
+        # BOTÃO PDF CORRIGIDO
+        pdf_bytes = criar_pdf_premium(df)
         st.download_button(
-            label="📄 BAIXAR RELATÓRIO EM PDF",
-            data=pdf_data,
+            label="📄 BAIXAR RELATÓRIO EXECUTIVO (PDF)",
+            data=pdf_bytes,
             file_name="relatorio_precificacao.pdf",
             mime="application/pdf",
             use_container_width=True
