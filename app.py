@@ -1,109 +1,95 @@
 import streamlit as st
 import pandas as pd
 
-# --- CONFIGURAÇÕES DE TAXAS (Fácil Atualização) ---
-CONFIG_TAXAS = {
-    "Mercado Livre": {
-        "Clássico": {"comissao": 0.12, "taxa_fixa": 6.75, "limite_taxa_fixa": 79.0},
-        "Premium": {"comissao": 0.17, "taxa_fixa": 6.75, "limite_taxa_fixa": 79.0},
-    },
-    "Shopee": {
-        "Padrao": {"comissao": 0.14, "taxa_fixa": 4.0, "teto_comissao": 100.0},
-        "Frete Gratis": {"comissao": 0.20, "taxa_fixa": 4.0, "teto_comissao": 105.0},
-    }
+# --- CONFIGURAÇÃO DE CATEGORIAS E TAXAS ---
+# Aqui você pode adicionar as categorias reais de cada marketplace
+CATEGORIAS_DATA = {
+    "Eletrônicos": {"ml_classico": 0.12, "ml_premium": 0.17, "shopee_base": 0.14},
+    "Acessórios Automotivos": {"ml_classico": 0.14, "ml_premium": 0.19, "shopee_base": 0.14},
+    "Casa e Decoração": {"ml_classico": 0.11, "ml_premium": 0.16, "shopee_base": 0.14},
+    "Moda/Vestuário": {"ml_classico": 0.15, "ml_premium": 0.20, "shopee_base": 0.14},
+    "Outros": {"ml_classico": 0.13, "ml_premium": 0.18, "shopee_base": 0.14},
 }
 
-# --- FUNÇÕES DE CÁLCULO ---
-def calcular_preco(custo_prod, markup, imposto, comissao_perc, taxa_fixa, frete, teto_comissao=None):
-    """
-    Calcula o preço de venda baseado na margem desejada sobre o faturamento (Margem Ebitda).
-    Fórmula: Preço = (Custo + Frete + Taxa Fixa) / (1 - %Imposto - %Comissão - %Margem)
-    """
-    denominador = 1 - (imposto / 100) - comissao_perc - (markup / 100)
+# Inicializa o "Banco de Dados" na sessão do usuário
+if 'lista_produtos' not in st.session_state:
+    st.session_state.lista_produtos = []
+
+def calcular_venda(custo, markup, imposto, comissao, taxa_fixa, frete, teto=None):
+    denominador = 1 - (imposto / 100) - comissao - (markup / 100)
+    if denominador <= 0: return 0, 0
+    preco = (custo + frete + taxa_fixa) / denominador
     
-    if denominador <= 0:
-        return 0, 0, 0
-
-    preco_estimado = (custo_prod + frete + taxa_fixa) / denominador
+    # Regra de Teto Shopee
+    if teto and (preco * comissao) > teto:
+        preco = (custo + frete + taxa_fixa + teto) / (1 - (imposto / 100) - (markup / 100))
     
-    # Validação de Teto de Comissão (Shopee)
-    comissao_valor = preco_estimado * comissao_perc
-    if teto_comissao and comissao_valor > teto_comissao:
-        # Se atingiu o teto, a comissão vira um custo fixo
-        preco_estimado = (custo_prod + frete + taxa_fixa + teto_comissao) / (1 - (imposto / 100) - (markup / 100))
-        comissao_valor = teto_comissao
+    lucro = preco - custo - (preco * (imposto/100)) - (preco * comissao) - taxa_fixa - frete
+    return round(preco, 2), round(lucro, 2)
 
-    imposto_valor = preco_estimado * (imposto / 100)
-    lucro_valor = preco_estimado - custo_prod - imposto_valor - comissao_valor - taxa_fixa - frete
+st.title("🚀 Precificador Pro: Gestão de Portfólio")
+
+# --- ÁREA DE ENTRADA ---
+with st.expander("➕ Adicionar Novo Produto", expanded=True):
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        nome = st.text_input("Nome do Produto", placeholder="Ex: Teclado Mecânico")
+        categoria = st.selectbox("Categoria do Produto", list(CATEGORIAS_DATA.keys()))
+        custo = st.number_input("Custo de Aquisição (R$)", min_value=0.01, value=50.0)
+    with col2:
+        markup = st.slider("Margem de Lucro Alvo %", 5, 50, 15)
+        imposto = st.number_input("Imposto (%)", value=4.0)
+        frete = st.number_input("Custo de Frete (R$)", value=0.0)
+    with col3:
+        st.write("**Simular para:**")
+        anuncio_ml = st.radio("ML: Tipo de Anúncio", ["Clássico", "Premium"])
+        frete_shopee = st.checkbox("Participa do Frete Grátis Shopee? (+6%)")
+
+    if st.button("Calcular e Adicionar à Lista"):
+        # Lógica ML
+        taxa_ml = CATEGORIAS_DATA[categoria]["ml_classico" if anuncio_ml == "Clássico" else "ml_premium"]
+        fixa_ml = 6.75 if (custo + frete) < 79 else 0
+        p_ml, l_ml = calcular_venda(custo, markup, imposto, taxa_ml, fixa_ml, frete)
+
+        # Lógica Shopee
+        taxa_shopee = 0.20 if frete_shopee else 0.14
+        p_shopee, l_shopee = calcular_venda(custo, markup, imposto, taxa_shopee, 4.0, frete, teto=103.0)
+
+        # Salva no estado da sessão
+        st.session_state.lista_produtos.append({
+            "Produto": nome,
+            "Categoria": categoria,
+            "Custo": custo,
+            "Preço ML": p_ml,
+            "Lucro ML": l_ml,
+            "Preço Shopee": p_shopee,
+            "Lucro Shopee": l_shopee,
+            "Melhor Canal": "Mercado Livre" if l_ml > l_shopee else "Shopee"
+        })
+        st.success(f"Produto {nome} adicionado!")
+
+# --- GRID VISUAL ---
+st.subheader("📋 Grid de Precificação")
+if st.session_state.lista_produtos:
+    df = pd.DataFrame(st.session_state.lista_produtos)
     
-    return round(preco_estimado, 2), round(lucro_valor, 2), round(comissao_valor + taxa_fixa, 2)
+    # Exibe a tabela com formatação
+    st.dataframe(df.style.highlight_max(axis=1, subset=['Lucro ML', 'Lucro Shopee'], color='#d4edda'), use_container_width=True)
 
-# --- INTERFACE ---
-st.set_page_config(page_title="Calculadora de Preço E-commerce", layout="wide")
-st.title("📊 Precificador Inteligente: ML vs Shopee")
-
-with st.sidebar:
-    st.header("1. Custos e Impostos")
-    custo_aquisicao = st.number_input("Custo do Produto (R$)", min_value=0.0, value=50.0)
-    markup_desejado = st.slider("Margem de Lucro Desejada (%)", 5, 50, 15)
+    # --- EXPORTAÇÃO ---
+    st.divider()
+    col_exp1, col_exp2 = st.columns(2)
     
-    regime = st.selectbox("Regime Tributário", ["Simples Nacional", "Lucro Presumido", "MEI"])
-    imposto_padrao = 4.0 if regime == "Simples Nacional" else 0.0
-    aliquota_imposto = st.number_input("Alíquota de Imposto (%)", value=imposto_padrao)
-
-    st.header("2. Logística")
-    oferece_frete_gratis = st.toggle("Oferecer Frete Grátis?")
-    custo_frete = 0.0
-    if oferece_frete_gratis:
-        custo_frete = st.number_input("Custo do Frete para você (R$)", value=20.0)
-
-# --- CÁLCULOS POR PLATAFORMA ---
-col1, col2 = st.columns(2)
-
-# MERCADO LIVRE
-with col1:
-    st.subheader("📦 Mercado Livre")
-    tipo_anuncio = st.selectbox("Tipo de Anúncio", ["Clássico", "Premium"])
-    config_ml = CONFIG_TAXAS["Mercado Livre"][tipo_anuncio]
-    
-    # Regra: ML remove taxa fixa se preço > R$ 79
-    # Fazemos uma pré-checagem simples
-    taxa_fixa_ml = config_ml["taxa_fixa"] if (custo_aquisicao + custo_frete) < 79 else 0
-    
-    preco_ml, lucro_ml, taxas_ml = calcular_preco(
-        custo_aquisicao, markup_desejado, aliquota_imposto, 
-        config_ml["comissao"], taxa_fixa_ml, custo_frete
+    csv = df.to_csv(index=False).encode('utf-8')
+    col_exp1.download_button(
+        label="📥 Baixar Planilha (CSV)",
+        data=csv,
+        file_name='precificacao_produtos.csv',
+        mime='text/csv',
     )
     
-    st.metric("Preço Sugerido", f"R$ {preco_ml}")
-    st.write(f"**Lucro Líquido:** R$ {lucro_ml}")
-    st.caption(f"Taxas ML: R$ {taxas_ml} | Imposto: {aliquota_imposto}%")
-    if taxas_ml / preco_ml > 0.20:
-        st.warning("⚠️ Alerta: Taxas corroendo mais de 20% do faturamento!")
-
-# SHOPEE
-with col2:
-    st.subheader("🟠 Shopee")
-    programa_frete = st.selectbox("Programa de Frete", ["Padrao", "Frete Gratis"])
-    config_shp = CONFIG_TAXAS["Shopee"][programa_frete]
-    
-    preco_shp, lucro_shp, taxas_shp = calcular_preco(
-        custo_aquisicao, markup_desejado, aliquota_imposto,
-        config_shp["comissao"], config_shp["taxa_fixa"], custo_frete,
-        teto_comissao=config_shp["teto_comissao"]
-    )
-    
-    st.metric("Preço Sugerido", f"R$ {preco_shp}")
-    st.write(f"**Lucro Líquido:** R$ {lucro_shp}")
-    st.caption(f"Taxas Shopee: R$ {taxas_shp} | Imposto: {aliquota_imposto}%")
-
-# --- COMPARATIVO ---
-st.divider()
-st.subheader("📈 Comparativo de Resultados")
-dados_comp = {
-    "Plataforma": ["Mercado Livre", "Shopee"],
-    "Preço Sugerido (R$)": [preco_ml, preco_shp],
-    "Lucro em R$": [lucro_ml, lucro_shp],
-    "Margem Real (%)": [round((lucro_ml/preco_ml)*100,2), round((lucro_shp/preco_shp)*100,2)]
-}
-st.table(pd.DataFrame(dados_comp))
+    if col_exp2.button("Limpar Lista"):
+        st.session_state.lista_produtos = []
+        st.rerun()
+else:
+    st.info("Sua lista está vazia. Adicione um produto acima para começar.")
