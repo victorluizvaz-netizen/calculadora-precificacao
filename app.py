@@ -94,11 +94,35 @@ st.subheader("📋 Grid de Precificação Ativa")
 if st.session_state.lista_produtos:
     df_grid = pd.DataFrame(st.session_state.lista_produtos)
     
-    # Formatação para destacar o lucro
-    st.dataframe(
-        df_grid.style.highlight_max(axis=1, subset=['Lucro ML', 'Lucro Shopee'], color='#b7e4c7'),
-        use_container_width=True
+    # Criamos uma cópia para exibição formatada sem alterar os dados originais
+    df_display = df_grid.copy()
+    
+    # Formatação de Moeda para o usuário ver R$ 0,00
+    colunas_moeda = ['Custo', 'Preço ML', 'Lucro ML', 'Preço Shopee', 'Lucro Shopee']
+    for col in colunas_moeda:
+        df_display[col] = df_display[col].apply(lambda x: f"R$ {x:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+    # Exibição da Tabela
+    # Removi o .style.highlight_max para que o fundo fique normal. 
+    # Se quiser o destaque apenas quando houver lucro, use a linha comentada abaixo.
+    st.dataframe(df_display, use_container_width=True)
+
+    # --- EXPORTAÇÃO ---
+    st.divider()
+    col_exp1, col_exp2 = st.columns(2)
+    
+    # O CSV continua com os números puros para você conseguir fazer contas no Excel
+    csv = df_grid.to_csv(index=False).encode('utf-8-sig')
+    col_exp1.download_button(
+        label="📥 Exportar para Excel/CSV",
+        data=csv,
+        file_name='meus_precos.csv',
+        mime='text/csv',
     )
+    
+    if col_exp2.button("🗑️ Limpar Tudo"):
+        st.session_state.lista_produtos = []
+        st.rerun()
 
     # --- EXPORTAÇÃO ---
     st.divider()
@@ -117,3 +141,4 @@ if st.session_state.lista_produtos:
         st.rerun()
 else:
     st.info("Nenhum produto na lista. Utilize o formulário acima para calcular.")
+
