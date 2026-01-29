@@ -2,161 +2,170 @@ import streamlit as st
 import pandas as pd
 import math
 
-# --- CONFIGURAÇÃO E CSS (Fiel ao seu HTML) ---
+# --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(page_title="Precificador Pro", layout="wide")
 
+# --- CSS PERSONALIZADO (Fiel ao seu HTML e Anexos) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
     
-    /* Fundo Gradiente idêntico ao HTML */
+    /* Layer Externa: Gradiente Roxo */
     .stApp {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
         font-family: 'Outfit', sans-serif !important;
     }
 
-    /* Títulos em Branco */
-    h1, h2, h3, .stMarkdown p { color: white !important; text-align: center; }
-
-    /* CARD BRANCO (Estilo seu HTML) */
-    .main-card {
-        background: white;
+    /* Layer Interna: Cards Brancos (Anexo 1) */
+    .main-container {
+        background-color: white;
         border-radius: 20px;
-        padding: 2rem;
-        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
-        margin-bottom: 2rem;
+        padding: 30px;
+        margin-bottom: 25px;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
     }
 
-    /* INPUTS VISÍVEIS (Texto Escuro e Fundo Light) */
-    .stTextInput input, .stNumberInput input, .stSelectbox div[data-baseweb="select"] {
+    /* Inputs dentro do card branco */
+    div[data-testid="stExpander"], .stTextInput input, .stNumberInput input, .stSelectbox select {
         background-color: #F8FAFC !important;
         border: 2px solid #E2E8F0 !important;
         color: #0F172A !important;
-        border-radius: 12px !important;
-        font-weight: 500 !important;
+    }
+    
+    label p { color: #0F172A !important; font-weight: 600 !important; }
+
+    /* Comparativo (Anexo 2) */
+    .comp-card {
+        background: #F8FAFC;
+        border-radius: 16px;
+        padding: 20px;
+        text-align: center;
+        border: 1px solid #E2E8F0;
+    }
+    .metric-label { color: #64748B; font-size: 0.8rem; text-transform: uppercase; margin-bottom: 10px; }
+    .metric-value { color: #0F172A; font-size: 1.5rem; font-weight: 700; margin: 5px 0; }
+    .winner-badge { 
+        background: #10B981; color: white; padding: 4px 12px; border-radius: 50px; font-size: 0.7rem; font-weight: bold;
     }
 
-    /* Labels dos campos dentro do Card (Preto para leitura) */
-    label[data-testid="stWidgetLabel"] p {
-        color: #0F172A !important;
-        font-weight: 600 !important;
-        text-align: left !important;
-    }
-
-    /* Botão Estilizado */
-    .stButton > button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        color: white !important;
-        border-radius: 12px !important;
-        border: none !important;
-        padding: 0.75rem 2rem !important;
-        font-weight: 700 !important;
-        width: 100%;
-        transition: all 0.3s ease;
-    }
-
-    /* Cards de Resultado coloridos */
-    .res-ml { border-top: 8px solid #FFE600; background: white; padding: 20px; border-radius: 15px; color: #0F172A; }
-    .res-sh { border-top: 8px solid #EE4D2D; background: white; padding: 20px; border-radius: 15px; color: #0F172A; }
+    /* Títulos em Branco (fora dos cards) */
+    .white-text { color: white !important; text-align: center; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- REGRAS DE TAXAS (Recuperadas do seu HTML) ---
-#
-CATEGORIAS_TAXAS = {
-    "Eletrônicos": {"ml": 0.14, "shopee": 0.14},
-    "Moda e Acessórios": {"ml": 0.12, "shopee": 0.13},
-    "Casa e Decoração": {"ml": 0.11, "shopee": 0.12},
-    "Esportes e Fitness": {"ml": 0.12, "shopee": 0.13},
-    "Beleza e Cuidados": {"ml": 0.13, "shopee": 0.14},
-    "Brinquedos e Jogos": {"ml": 0.13, "shopee": 0.13},
-    "Outros": {"ml": 0.12, "shopee": 0.14}
-}
+# --- INICIALIZAÇÃO DE DADOS ---
+if 'db' not in st.session_state:
+    st.session_state.db = []
 
-def arredondar_psicologico(preco):
-    # Lógica de arredondamento .90 do seu HTML
-    return math.ceil(preco) - 0.10
-
+# --- FUNÇÕES DE CÁLCULO (Baseadas no seu HTML) ---
 def calcular_venda(custo, markup, imposto, comissao, taxa_fixa, frete):
+    #
     denominador = 1 - (imposto / 100) - comissao - (markup / 100)
-    if denominador <= 0: return 0.0, 0.0
-    preco_sugerido = (custo + taxa_fixa + frete) / denominador
-    preco_final = arredondar_psicologico(preco_sugerido)
-    lucro = preco_final - custo - (preco_final * (imposto/100)) - (preco_final * comissao) - taxa_fixa - frete
-    return preco_final, lucro
+    if denominador <= 0: return 0.0, 0.0, comissao + (taxa_fixa/100) # Erro de margem
+    
+    preco_base = (custo + taxa_fixa + frete) / denominador
+    preco_final = math.ceil(preco_base) - 0.10 # Arredondamento .90
+    
+    taxas_totais = (preco_final * comissao) + taxa_fixa
+    lucro = preco_final - custo - (preco_final * (imposto/100)) - taxas_totais - frete
+    margem = (lucro / preco_final) * 100 if preco_final > 0 else 0
+    return preco_final, lucro, margem, taxas_totais
 
-# --- INTERFACE ---
-if 'historico' not in st.session_state:
-    st.session_state.historico = []
+# --- HEADER ---
+st.markdown("<h1 class='white-text'>💰 Calculadora de Precificação</h1>", unsafe_allow_html=True)
+st.markdown("<p class='white-text'>Calcule o preço ideal para Mercado Livre e Shopee</p><br>", unsafe_allow_html=True)
 
-# BARRA LATERAL COM TAXAS (Transparência total)
-with st.sidebar:
-    st.markdown("### 📊 Taxas por Categoria")
-    df_taxas = pd.DataFrame([{"Cat": k, "ML": f"{v['ml']:.0%}", "SHP": f"{v['shopee']:.0%}"} for k, v in CATEGORIAS_TAXAS.items()])
-    st.table(df_taxas)
-    st.info("Nota: ML Premium (+4%) e Shopee Frete Grátis (+6%) são somados ao calcular.")
-
-st.markdown("<h1>💰 Calculadora de Precificação</h1>", unsafe_allow_html=True)
-st.markdown("<p>Fiel ao seu design original com inteligência de dados</p>", unsafe_allow_html=True)
-
-# CARD PRINCIPAL DE ENTRADA
+# --- CAMADA DE ADIÇÃO DE DADOS (Card Branco - Anexo 1) ---
 with st.container():
-    st.markdown('<div class="main-card">', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
+    st.markdown('<div class="main-container">', unsafe_allow_html=True)
+    st.markdown("<h3 style='color:#0F172A'>📦 Dados do Produto</h3>", unsafe_allow_html=True)
+    
+    c1, c2, c3 = st.columns([2, 1, 1])
     with c1:
-        nome = st.text_input("📦 Nome do Produto", placeholder="Ex: Smartwatch")
-        custo = st.number_input("💵 Custo de Aquisição (R$)", min_value=0.0, value=50.0)
-        cat = st.selectbox("📂 Categoria", list(CATEGORIAS_TAXAS.keys()))
+        nome = st.text_input("Nome do Produto", placeholder="Ex: Smartwatch v8")
     with c2:
-        markup = st.slider("📈 Margem de Lucro Alvo (%)", 5, 50, 25)
-        imposto = st.number_input("🧾 Imposto (%)", value=6.0)
-        frete = st.number_input("🚚 Frete (se grátis)", value=0.0)
-    
-    st.markdown("<hr style='border: 1px solid #E2E8F0'>", unsafe_allow_html=True)
-    
-    c3, c4 = st.columns(2)
+        custo = st.number_input("Custo de Aquisição (R$)", value=50.0)
     with c3:
-        tipo_ml = st.radio("Anúncio Mercado Livre", ["Clássico", "Premium"], horizontal=True)
-    with c4:
-        shopee_fg = st.checkbox("Participa do Frete Grátis Shopee?")
+        markup = st.number_input("Margem Desejada (%)", value=25.0)
 
-    if st.button("CALCULAR PREÇO AGORA"):
+    with st.expander("Configurações Avançadas (Impostos e Categorias)"):
+        ca, cb, cc = st.columns(3)
+        with ca:
+            imposto = st.number_input("Imposto (%)", value=6.0)
+            categoria = st.selectbox("Categoria", ["Eletrônicos", "Moda", "Casa", "Outros"])
+        with cb:
+            tipo_ml = st.radio("ML: Anúncio", ["Clássico", "Premium"], horizontal=True)
+            frete_ml = st.number_input("Frete ML (se grátis)", value=0.0)
+        with cc:
+            shopee_fg = st.checkbox("Shopee Frete Grátis?")
+            frete_sh = st.number_input("Frete Shopee (se grátis)", value=0.0)
+
+    if st.button("CALCULAR E ADICIONAR PREÇO", use_container_width=True):
         # Lógica ML
-        taxa_ml = CATEGORIAS_TAXAS[cat]["ml"] + (0.04 if tipo_ml == "Premium" else 0.0)
-        fixa_ml = 6.75 if custo < 79 else 0
-        p_ml, l_ml = calcular_venda(custo, markup, imposto, taxa_ml, fixa_ml, frete)
+        com_ml = 0.14 if tipo_ml == "Premium" else 0.10
+        p_ml, l_ml, m_ml, t_ml = calcular_venda(custo, markup, imposto, com_ml, 6.75 if custo < 79 else 0, frete_ml)
         
         # Lógica Shopee
-        taxa_sh = 0.20 if shopee_fg else 0.14
-        p_sh, l_sh = calcular_venda(custo, markup, imposto, taxa_sh, 4.0, frete)
+        com_sh = 0.20 if shopee_fg else 0.14
+        p_sh, l_sh, m_sh, t_sh = calcular_venda(custo, markup, imposto, com_sh, 4.0, frete_sh)
         
-        st.session_state.historico.append({
-            "Produto": nome, "Custo": custo, "Preço ML": p_ml, "Lucro ML": l_ml, "Preço Shopee": p_sh, "Lucro Shopee": l_sh
+        st.session_state.db.append({
+            "Produto": nome, "Custo": custo, 
+            "Preço ML": p_ml, "Lucro ML": l_ml, "Margem ML": m_ml, "Taxas ML": t_ml,
+            "Preço Shopee": p_sh, "Lucro Shopee": l_sh, "Margem Shopee": m_sh, "Taxas Shopee": t_sh
         })
     st.markdown('</div>', unsafe_allow_html=True)
 
-# CARDS DE RESULTADO (Estilo do seu HTML)
-if st.session_state.historico:
-    ultimo = st.session_state.historico[-1]
-    res1, res2 = st.columns(2)
+# --- CAMPO DE COMPARATIVO DINÂMICO (Anexo 2) ---
+if st.session_state.db:
+    st.markdown("<h2 class='white-text'>📊 Comparativo entre Plataformas</h2>", unsafe_allow_html=True)
     
-    with res1:
-        st.markdown(f"""<div class="res-ml">
-            <h3 style="color:#0F172A !important; text-align:left">Mercado Livre</h3>
-            <p style="color:#64748B !important; text-align:left">Preço Recomendado:</p>
-            <h2 style="color:#0F172A !important; text-align:left">R$ {ultimo['Preço ML']:.2f}</h2>
-            <p style="color:#10B981 !important; text-align:left; font-weight:bold">Lucro: R$ {ultimo['Lucro ML']:.2f}</p>
-        </div>""", unsafe_allow_html=True)
-        
-    with res2:
-        st.markdown(f"""<div class="res-sh">
-            <h3 style="color:#0F172A !important; text-align:left">Shopee</h3>
-            <p style="color:#64748B !important; text-align:left">Preço Recomendado:</p>
-            <h2 style="color:#0F172A !important; text-align:left">R$ {ultimo['Preço Shopee']:.2f}</h2>
-            <p style="color:#10B981 !important; text-align:left; font-weight:bold">Lucro: R$ {ultimo['Lucro Shopee']:.2f}</p>
-        </div>""", unsafe_allow_html=True)
+    # Seletor de produto para carregar no comparativo
+    lista_nomes = [p["Produto"] for p in st.session_state.db]
+    produto_sel_nome = st.selectbox("Selecione um produto da lista para comparar:", lista_nomes, index=len(lista_nomes)-1)
+    
+    # Busca os dados do produto selecionado
+    p_data = next(item for item in st.session_state.db if item["Produto"] == produto_sel_nome)
 
-    # HISTÓRICO EM GRID
-    st.markdown("<br><h3>📋 Histórico de Precificação</h3>", unsafe_allow_html=True)
-    df = pd.DataFrame(st.session_state.historico)
-    st.dataframe(df, use_container_width=True)
+    with st.container():
+        st.markdown('<div class="main-container">', unsafe_allow_html=True)
+        comp1, comp2, comp3, comp4 = st.columns(4)
+        
+        with comp1:
+            st.markdown(f"""<div class="comp-card">
+                <div class="metric-label">Melhor Margem</div>
+                <div class="metric-value">{max(p_data['Margem ML'], p_data['Margem Shopee']):.1f}%</div>
+                <div class="winner-badge">{'MERCADO LIVRE' if p_data['Margem ML'] > p_data['Margem Shopee'] else 'SHOPEE'}</div>
+            </div>""", unsafe_allow_html=True)
+            
+        with comp2:
+            st.markdown(f"""<div class="comp-card">
+                <div class="metric-label">Maior Lucro</div>
+                <div class="metric-value">R$ {max(p_data['Lucro ML'], p_data['Lucro Shopee']):.2f}</div>
+                <div class="winner-badge">{'MERCADO LIVRE' if p_data['Lucro ML'] > p_data['Lucro Shopee'] else 'SHOPEE'}</div>
+            </div>""", unsafe_allow_html=True)
+            
+        with comp3:
+            st.markdown(f"""<div class="comp-card">
+                <div class="metric-label">Menor Taxa Total</div>
+                <div class="metric-value">R$ {min(p_data['Taxas ML'], p_data['Taxas Shopee']):.2f}</div>
+                <div class="winner-badge">{'SHOPEE' if p_data['Taxas Shopee'] < p_data['Taxas ML'] else 'MERCADO LIVRE'}</div>
+            </div>""", unsafe_allow_html=True)
+            
+        with comp4:
+            st.markdown(f"""<div class="comp-card">
+                <div class="metric-label">Recomendação</div>
+                <div class="metric-value" style="font-size: 1.1rem">{'Mercado Livre' if p_data['Lucro ML'] > p_data['Lucro Shopee'] else 'Shopee'}</div>
+                <div class="winner-badge" style="background:#667eea">MELHOR OPÇÃO</div>
+            </div>""", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+# --- GRID HISTÓRICO ---
+if st.session_state.db:
+    st.markdown("<h3 class='white-text'>📋 Histórico de Produtos</h3>", unsafe_allow_html=True)
+    df = pd.DataFrame(st.session_state.db)
+    st.dataframe(df[["Produto", "Custo", "Preço ML", "Lucro ML", "Preço Shopee", "Lucro Shopee"]], use_container_width=True)
+    
+    if st.button("🗑️ LIMPAR TUDO"):
+        st.session_state.db = []
+        st.rerun()
